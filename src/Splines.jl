@@ -1,5 +1,7 @@
 module Splines
 
+export Spline, SplineEval
+
 # Spline definition
 type Spline{T}
     t::Vector{Float64}
@@ -37,11 +39,15 @@ function get_knot(x::Float64, s::Spline)
     return i
 end
 
+function DeBoor(s::Spline, ord::Int, x::Float64, k::Int, i::Int)
+    α = (x - s.u[i]) / (s.u[i + ord + 1 - k] - s.u[i])
+    return (1 - α) * DeBoor(s, ord, x, k-1, i-1) + α * DeBoor(s, ord, x, k-1, i)
+end
 
 # De Boor's Algorithm for evaluating Spline at a point x
 function SplineEval(s::Spline, ord::Int, x::Float64)
-
-
+    knot = get_knot(x, s)
+    return DeBoor(s, ord, x, ord, knot)
 end
 
 
