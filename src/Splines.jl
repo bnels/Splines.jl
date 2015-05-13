@@ -1,6 +1,6 @@
 module Splines
 
-export BSplineEval
+export BSplineEval, SplineCoeffMatrix
 
 # Spline definition
 type Spline{T}
@@ -41,16 +41,20 @@ Spline{T}(s::Spline{T}) = Spline{T}(copy(s.t), copy(s.u))
 
 # Evaluate BSpline Basis defined by knot sequence t at point x
 function BSplineEval(t::Vector{Float64}, ord::Int, knot::Int, x::Float64)
+    app = t[end]*ones(ord+1)
+    bapp = t[1]*ones(ord+1)
+    knot = knot + ord + 1
+    tapp = [bapp; t; app]
     B = zeros(ord+1, ord+1)
     for i = 1:ord+1
-        (t[knot + i - 1] <= x < t[knot + i]) ? B[i,1] = 1 : B[i,1] = 0
+        (tapp[knot + i - 1] <= x < tapp[knot + i]) ? B[i,1] = 1 : B[i,1] = 0
     end
     for k = 1:ord
         for i = 1:1+ord-k
-            r1 = (t[knot + i + k - 1] - t[knot + i - 1])
-            r2 = (t[knot + i + k] - t[knot + i])
-            r1 == 0 ? c1 = 0 : c1 = (x - t[knot + i - 1]) / r1
-            r2 == 0 ? c2 = 0 : c2 = (t[knot + i + k] - x) / r2
+            r1 = (tapp[knot + i + k - 1] - tapp[knot + i - 1])
+            r2 = (tapp[knot + i + k] - tapp[knot + i])
+            r1 == 0 ? c1 = 0 : c1 = (x - tapp[knot + i - 1]) / r1
+            r2 == 0 ? c2 = 0 : c2 = (tapp[knot + i + k] - x) / r2
             B[i,k+1] = c1*B[i,k] + c2*B[i+1,k]
         end
     end
@@ -67,7 +71,17 @@ function BSplineEval(t::Vector{Float64}, ord::Int, knot::Int, x::Vector{Float64}
 end
 
 # create matrix that has BSpline basis function value evaluated at each knot
-function SplineMatrix(t::Vector{Float64}, ord::Int)
+function SplineCoeffMatrix(t::Vector{Float64}, ord::Int)
+    m = size(t,1)
+    n = m + ord - 1
+    A = zeros(n,m)
+    for i = 1:m-1
+        for j = 1:n-1
+            A[j,i] = BSplineEval(t, ord, j-ord, t[i])
+        end
+    end
+    A[n,m] = 1.0
+    return A
 end
 
 #function DeBoor(s::Spline, ord::Int, x::Float64, k::Int, i::Int)
