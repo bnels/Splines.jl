@@ -12,7 +12,6 @@ type Spline{T}
             new(t,u)
         else
             throw(DimensionMismatch())
-            
         end    
     end
 end
@@ -24,8 +23,18 @@ Spline{T}(t::Range, u::Vector{T}) = Spline{T}(Array(float(t)), copy(u))
 Spline{T}(s::Spline{T}) = Spline{T}(copy(s.t), copy(s.u))
 
 # find which knot a point x lies in
+# returns first first index of s.t that is > x
+# if x is > than all of s.t, returns max index + 1
 function get_knot(x::Float64, s::Spline)
-    
+    i = 1
+    imax = length(s.t)
+    found = false
+    while !found
+        x > s.t[i] || found = true
+        found || i += 1 # only increment if we go to the next iteration
+        i <= imax || found = true # quit if we've gone too far
+    end
+    return i
 end
 
 
