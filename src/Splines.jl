@@ -20,7 +20,8 @@ end
 
 # Evaluate the k-th basis function at point X
 # We will not do this recursively
-function BasisEval(B::BasisSpline, k::Int, x::Float64)
+# d is the order of the derivative to evaluate
+function BasisEval(B::BasisSpline, k::Int, x::Float64, d::Int=0)
     # Pad on m-1 knots to the beginning / end
     t_pad = [ B.t[1] * ones(B.m-1); B.t; B.t[end] * ones(B.m-1) ]
     # k relative to padded vector
@@ -39,8 +40,13 @@ function BasisEval(B::BasisSpline, k::Int, x::Float64)
         for i = 1:B.m-j
             r1 = (t_pad[k_pad+i+j-1] - t_pad[k_pad+i-1])
             r2 = (t_pad[k_pad+i+j] - t_pad[k_pad+i])
-            c1 = (r1 == 0) ? 0 : (x - t_pad[k_pad+i-1]) / r1
-            c2 = (r2 == 0) ? 0 : (t_pad[k_pad+i+j] - x) / r2
+            if B.m-1 - j >= d
+                c1 = (r1 == 0) ? 0 : (x - t_pad[k_pad+i-1]) / r1
+                c2 = (r2 == 0) ? 0 : (t_pad[k_pad+i+j] - x) / r2
+            else
+                c1 = (r1 == 0) ? 0 : j / r1
+                c2 = (r2 == 0) ? 0 : -j / r2
+            end
 
             T[i, j+1] = c1 * T[i, j] + c2 * T[i+1, j]
         end
@@ -49,11 +55,11 @@ function BasisEval(B::BasisSpline, k::Int, x::Float64)
 end
 
 # Evaluate for a whole bunch of points
-function BasisEval(B::BasisSpline, k::Int, x::Vector{Float64})
+function BasisEval(B::BasisSpline, k::Int, x::Vector{Float64}, d::Int=0)
     n = size(x,1)
     f = zeros(n)
     for i = 1:n
-        f[i] = BasisEval(B, k, x[i])
+        f[i] = BasisEval(B, k, x[i], d)
     end
     return f
 end
@@ -88,22 +94,34 @@ Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) = Spline(v, BasisSpline(t,
 
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
 # TODO: Derivative matching
+# HACK: currently we eval everything slightly to the left of the knots because it isn't defined at the other location
 function SplineCoeffMatrix(B::BasisSpline)
-
     # number of points to eval at
     m = size(B.t, 1)
     # Why is n so weird?
     n = B.m + length(B.t) - 2
+    M = n-m
     # Why is offset so weird?
     offset = B.m
 
-    A = zeros(m,n)
+    A = zeros(n,n)
     for i = 1:m-1
         for j=1:n
             A[i,j] = BasisEval(B, j-offset, B.t[i])
         end
     end
     A[m,n] = 1.
+
+    # Now we add derivative conditions at the ends
+    for i = m+1:2:n
+        d = Int(ceil( float(i-m)/ 2.))
+        for j = 1:n
+            A[i,j] = BasisEval(B, j-offset, B.t[1], d)
+            if i+1 <= n
+                A[i+1,j] = BasisEval(B, j-offset, B.t[m]-eps(B.t[m]), d)
+            end
+        end
+    end
     return A
 end
 
