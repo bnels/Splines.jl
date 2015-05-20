@@ -1,5 +1,5 @@
 module Splines
-export BasisSpline, BasisEval, SplineCoeffMatrix, SplineEvalMatrix #BSplineEval,
+export BasisSpline, Spline, BasisEval, SplineCoeffMatrix, SplineEvalMatrix #BSplineEval,
 
 # TODO: implement more than zero BC
 
@@ -21,7 +21,7 @@ end
 # Evaluate the k-th basis function at point X
 # We will not do this recursively
 # d is the order of the derivative to evaluate
-function BasisEval(B::BasisSpline, k::Int, x::Float64, d::Int=0)
+function BasisEval(B::BasisSpline, k::Int, x::Float64, d::Int=0, hilbert::Bool=false)
     # Pad on m-1 knots to the beginning / end
     t_pad = [ B.t[1] * ones(B.m-1); B.t; B.t[end] * ones(B.m-1) ]
     # k relative to padded vector
@@ -31,8 +31,14 @@ function BasisEval(B::BasisSpline, k::Int, x::Float64, d::Int=0)
     T = zeros(B.m, B.m)
 
     # Check if x is in the support of each leaf-level basis function
-    for i = 1:B.m
-        T[i, 1] =  (t_pad[k_pad+i-1] <= x < t_pad[k_pad+i]) ? 1 : 0
+    if !hilbert
+        for i = 1:B.m
+            T[i, 1] =  (t_pad[k_pad+i-1] <= x < t_pad[k_pad+i]) ? 1 : 0
+        end
+    else #What do I do here if it goes to infinity?
+        for i = 1:B.m
+            T[i, 1] = log(abs((x-t_pad[k_pad+i-1]) / (x-t_pad[k_pad+i])))
+        end
     end
 
     # Recurse via iteration
@@ -55,46 +61,22 @@ function BasisEval(B::BasisSpline, k::Int, x::Float64, d::Int=0)
 end
 
 # Evaluate for a whole bunch of points
-function BasisEval(B::BasisSpline, k::Int, x::Vector{Float64}, d::Int=0)
+function BasisEval(B::BasisSpline, k::Int, x::Vector{Float64}, d::Int=0, hilbert::Bool=false)
     n = size(x,1)
     f = zeros(n)
     for i = 1:n
-        f[i] = BasisEval(B, k, x[i], d)
+        f[i] = BasisEval(B, k, x[i], d, hilbert)
     end
     return f
 end
 
-# # d is the order of the derivative to be evaluated
-# function DerivEval(B::BasisSpline, k::Int, x::Vector{Float64}, d::Int)
-#     if d == 0
-#         return BasisEval(B, k, x)
-#     end
-# end
 
-# Definition of Interpolatory spline
-type Spline{T}
 
-    # Function values sampled at the knot sequence
-    v::Vector{T}
-    B::BasisSpline
 
-    # Redefine standard constructor
-    # TODO: don't hold values, hold coefficients!
-    function Spline(v::Vector{T}, B::BasisSpline, )
-        if( length(B.t) == length(v) )
-            new(v, B)
-        else
-            throw(DimensionMismatch())
-        end
-    end
-end
-
-# Utility constructor
-Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) = Spline(v, BasisSpline(t,m))
 
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
-# TODO: Derivative matching
-# HACK: currently we eval everything slightly to the left of the knots because it isn't defined at the other location
+# TODO: Derivative matching, make sparse
+# HACK: currently we eval the last guy slightly to the left of the knots because it isn't defined at the other location
 function SplineCoeffMatrix(B::BasisSpline)
     # number of points to eval at
     m = size(B.t, 1)
@@ -122,12 +104,11 @@ function SplineCoeffMatrix(B::BasisSpline)
             end
         end
     end
-    return A
+    return sparse(A)
 end
 
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
-# TODO: Derivative matching
-function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64})
+function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, hilbert::Bool)
 
     # number of points to eval at
     m = size(x, 1)
@@ -139,138 +120,74 @@ function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64})
     A = zeros(m,n)
     for i = 1:m
         for j=1:n
-            A[i,j] = BasisEval(B, j-offset, x[i])
+            A[i,j] = BasisEval(B, j-offset, x[i], 0, hilbert)
         end
     end
-    return A
+    return sparse(A)
 end
 
 
 
 
+# Definition of Interpolatory spline
+type Spline{T}
+    # Function values sampled at the knot sequence
+    B::BasisSpline
+    alpha::Vector{T}
+
+    Spline{T} (B::BasisSpline, alpha::Vector{T}) = new(B, alpha)
+end
+
+# Construct a set of B spline coefficients from values
+function Spline{T}(v::Vector{T}, B::BasisSpline)
+    if( length(B.t) == length(v) )
+        A = SplineCoeffMatrix(B)
+        m_mat = size(A,1)
+        v1 = [ v; zeros(m_mat - length(v)); ]
+        alpha = A \ v1
+        return Spline{T}(B, alpha)
+    else
+        throw(DimensionMismatch())
+    end
+end
+
+# Utility constructor
+Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) = Spline(v, BasisSpline(t,m))
+
+function call{T}(S::Spline{T}, x::Vector{Float64}, hilbert::Bool=false)
+    A = SplineEvalMatrix(S.B, x, hilbert)
+    return A * S.alpha
+end
 
 
+function call{T}(S::Spline{T}, x::Float64, hilbert::Bool=false)
+    return S([x], hilbert)[1]
+end
 
+function *( scalar::Number, S::Spline )
+    alpha1 = [ promote(i,scalar)[1] for i in S.alpha ]
+    T = typeof(alpha1[1])
+    return Spline{T}( S.B, scalar * S.alpha )
+end
 
+function *( S::Spline, scalar::Number )
+    return scalar * S
+end
 
-# # Spline definition
-# type Spline{T}
-#     t::Vector{Float64}
-#     u::Vector{T}
-#     function Spline(t::Vector{Float64}, u::Vector{T})
-#         if( length(t) == length(u) )
-#             p = sortperm(t) # make sure we're sorted in time
-#             t = t[p]
-#             u = u[p]
-#             new(t,u)
-#         else
-#             throw(DimensionMismatch())
-#         end
-#     end
-# end
+function +( S1::Spline, S2::Spline )
+    knots = unique(sort([ S1.B.t; S2.B.t ]))
+    vals  = [ S1(knots[i]) + S2(knots[i]) for i in 1:length(knots) ]
+    m = max( S1.B.m, S2.B.m )
+    return Spline(vals, knots, m)
+end
 
-# # constructors
-# Spline{T}(t::Vector{Float64}, u::Vector{T}) = Spline{T}(copy(t), copy(u))
-# Spline{T}(t::Vector{Int}, u::Vector{T}) = Spline{T}(float(copy(t)), copy(u))
-# Spline{T}(t::Range, u::Vector{T}) = Spline{T}(Array(float(t)), copy(u))
-# Spline{T}(s::Spline{T}) = Spline{T}(copy(s.t), copy(s.u))
+function -( S1::Spline, S2::Spline )
+    return S1 + ((-1.) * S2)
+end
 
-# # find which knot a point x lies in
-# # returns first first index of s.t that is > x
-# # if x is > than all of s.t, returns max index + 1
-# #function get_knot(x::Float64, s::Spline)
-# #    i = 1
-# #    imax = length(s.t)
-# #    found = false
-# #    while !found
-# #        x > s.t[i] || found = true
-# #        found || i += 1 # only increment if we go to the next iteration
-# #        i <= imax || found = true # quit if we've gone too far
-# #    end
-# #    return i
-# #end
-
-# # Evaluate BSpline Basis defined by knot sequence t at point x
-# function BSplineEval(t::Vector{Float64}, ord::Int, knot::Int, x::Float64)
-#     app  = t[end] * ones(ord+1)
-#     bapp = t[1] * ones(ord+1)
-#     knot = knot + ord + 1
-#     tapp = [bapp; t; app]
-#     B = zeros(ord+1, ord+1)
-
-#     # Check if x is in the support of this basis function
-#     for i = 1:ord+1
-#         B[i, 1] =  (tapp[knot+i-1] <= x < tapp[knot+i]) ? 1 : 0
-#     end
-
-#     for k = 1:ord
-#         for i = 1:1+ord-k
-#             r1 = (tapp[knot+i+k-1] - tapp[knot+i-1])
-#             r2 = (tapp[knot+i+k] - tapp[knot+i])
-#             c1 = (r1 == 0) ? 0 : (x - tapp[knot+i-1]) / r1
-#             c2 = (r2 == 0) ? 0 : (tapp[knot+i+k] - x) / r2
-#             B[i, k+1] = c1 * B[i, k] + c2 * B[i+1, k]
-#         end
-#     end
-#     return B[1,ord+1]
-# end
-
-# # Evaluate the BS
-
-# function BSplineEval(t::Vector{Float64}, ord::Int, knot::Int, x::Vector{Float64})
-#     n = size(x,1)
-#     f = zeros(n)
-#     for i = 1:n
-#         f[i] = BSplineEval(t, ord, knot, x[i])
-#     end
-#     return f
-# end
-
-# create matrix that has BSpline basis function value evaluated at each knot
-# function SplineCoeffMatrix(t::Vector{Float64}, ord::Int)
-#     # m = size(t,1)
-#     # n = m + ord - 1
-#     # A = zeros(n,m)
-#     # for i = 1:m-1
-#     #     for j = 1:n-1
-#     #         A[j,i] = BSplineEval(t, ord, j-ord, t[i])
-#     #     end
-#     # end
-#     # A[n,m] = 1.0
-#     # return A
-
-
-#     # Number of equations: 1 for each knot plus zero padd
-#     # Number of knots without repeats
-#     n_knot = size(t,1)
-
-#     # Number of basis functions is total number of knots (including repeats)
-#     n = n_knot + 2*(ord-2)
-
-#     # number of equations is the same, we will use n_knot of them to be interpolation conditions
-#     # and m - n_knot to set derivatives to zero at the end
-
-#     m = n
-
-#     A = zeros(m,n)
-#     # for i = 1:n_knot-1
-#     #     for j = 1:n-1
-#     #         A[i,j] = BSplineEval(t, ord, i-ord, t[j])
-#     #     end
-#     # end
-#     return A
-# end
-
-#function DeBoor(s::Spline, ord::Int, x::Float64, k::Int, i::Int)
-#    α = (x - s.u[i]) / (s.u[i + ord + 1 - k] - s.u[i])
-#    return (1 - α) * DeBoor(s, ord, x, k-1, i-1) + α * DeBoor(s, ord, x, k-1, i)
-#end
-
-# De Boor's Algorithm for evaluating Spline at a point x
-#function SplineEval(s::Spline, ord::Int, x::Float64)
-#    knot = get_knot(x, s)
-#    return DeBoor(s, ord, x, ord, knot)
-#end
+function /( S::Spline, scalar::Number )
+    return (1.0/scalar) * S
+end
 
 
 end #module
