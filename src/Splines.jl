@@ -8,14 +8,27 @@ export BasisSpline, Spline, BasisEval, SplineCoeffMatrix, SplineEvalMatrix
 type BasisSpline
     # The knot sequence vector on which this collection is to be defined
     t::Vector{Float64}
+    # length of knot sequence
+    n::Int
     # Order of splines (note: linear = 2 (NOT 1), quadratic = 3, etc.)
     m::Int
 
     # Redefine standard constructor
-   BasisSpline(t::Vector{Float64}, m::Int=4) = new(sort(t), m)
+   function BasisSpline(t::Vector{Float64}, m::Int=4)
+        # sort and pad the knot sequence.  Default padding is repeated knots
+        sort!(t)
+        n = length(t)
+        t_pad = [t[1] * ones(m-1); t; t[end]*ones(m-1)]
+        return new(t_pad, n, m)
+   end
 end
 
 
+# return original knot sequence (unpadded)
+function knots(B::BasisSpline)
+    n = size(B.t,1)
+    return sub(B.t, (B.m):n-(2*B.m))
+end
 
 
 # Evaluate the k-th basis function at point X
@@ -23,7 +36,7 @@ end
 # d is the order of the derivative to evaluate
 function BasisEval(B::BasisSpline, k::Int, x::Float64, d::Int=0, hilbert::Bool=false)
     # Pad on m-1 knots to the beginning / end
-    t_pad = [ B.t[1] * ones(B.m-1); B.t; B.t[end] * ones(B.m-1) ]
+    t_pad = B.t
     # k relative to padded vector
     k_pad = k + B.m #(note that k starts at one)
 
@@ -79,9 +92,10 @@ end
 # HACK: currently we eval the last guy slightly to the left of the knots because it isn't defined at the other location
 function SplineCoeffMatrix(B::BasisSpline)
     # number of points to eval at
-    m = size(B.t, 1)
+    t = knots(B)
+    m = B.n
     # Why is n so weird?
-    n = B.m + length(B.t) - 2
+    n = B.m + m - 2
     M = n-m
     # Why is offset so weird?
     offset = B.m
@@ -89,7 +103,7 @@ function SplineCoeffMatrix(B::BasisSpline)
     A = zeros(n,n)
     for i = 1:m-1
         for j=1:n
-            A[i,j] = BasisEval(B, j-offset, B.t[i])
+            A[i,j] = BasisEval(B, j-offset, t[i])
         end
     end
     A[m,n] = 1.
@@ -98,9 +112,9 @@ function SplineCoeffMatrix(B::BasisSpline)
     for i = m+1:2:n
         d = Int(ceil( float(i-m)/ 2.))
         for j = 1:n
-            A[i,j] = BasisEval(B, j-offset, B.t[1], d)
+            A[i,j] = BasisEval(B, j-offset, t[1], d)
             if i+1 <= n
-                A[i+1,j] = BasisEval(B, j-offset, B.t[m]-eps(B.t[m]), d)
+                A[i+1,j] = BasisEval(B, j-offset, t[m]-eps(t[m]), d)
             end
         end
     end
@@ -113,7 +127,7 @@ function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, hilbert::Bool)
     # number of points to eval at
     m = size(x, 1)
     # Why is n so weird?
-    n = B.m + length(B.t) - 2
+    n = B.m + B.n - 2
     # Why is offset so weird?
     offset = B.m
 
@@ -140,7 +154,7 @@ end
 
 # Construct a set of B spline coefficients from values
 function Spline{T}(v::Vector{T}, B::BasisSpline)
-    if( length(B.t) == length(v) )
+    if( B.n == length(v) )
         A = SplineCoeffMatrix(B)
         m_mat = size(A,1)
         v1 = [ v; zeros(m_mat - length(v)); ]
