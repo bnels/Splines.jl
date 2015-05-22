@@ -1,5 +1,5 @@
 module Splines
-export BasisSpline, Spline, BasisEval, SplineCoeffMatrix, SplineEvalMatrix #BSplineEval,
+export BasisSpline, Spline, BasisEval, SplineCoeffMatrix, SplineEvalMatrix 
 
 # TODO: implement more than zero BC
 
@@ -37,7 +37,7 @@ function BasisEval(B::BasisSpline, k::Int, x::Float64, d::Int=0, hilbert::Bool=f
         end
     else #What do I do here if it goes to infinity?
         for i = 1:B.m
-            T[i, 1] = log(abs((x-t_pad[k_pad+i-1]) / (x-t_pad[k_pad+i])))
+            T[i, 1] = log(abs((x-t_pad[k_pad+i-1]) / (x-t_pad[k_pad+i])))/π
         end
     end
 
