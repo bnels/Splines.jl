@@ -23,6 +23,14 @@ type BasisSpline
    end
 end
 
+function PadKnots(B::BasisSpline, scheme::ASCIIString="repeat")
+    if scheme == "reflect"
+
+    elseif scheme == "periodic"
+
+    end
+end
+
 
 # return original knot sequence (unpadded)
 function knots(B::BasisSpline)
