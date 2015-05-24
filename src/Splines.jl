@@ -1,5 +1,5 @@
 module Splines
-export BasisSpline, Spline, BasisEval, SplineCoeffMatrix, SplineEvalMatrix 
+export BasisSpline, Spline, BasisEval, SplineCoeffMatrix, SplineEvalMatrix, PadKnots
 
 # TODO: implement more than zero BC
 
@@ -28,14 +28,26 @@ function PadKnots(B::BasisSpline, scheme::ASCIIString="repeat")
 
     elseif scheme == "periodic"
 
+    elseif scheme == "extend"
+        k = knots(B)
+
+        delta_start = k[2] - k[1]
+        delta_end   = k[end] - k[end-1]
+
+        for i = 1:B.m-1
+            B.t[B.m-i] = k[1] - delta_start * i
+            B.t[end - B.m + i + 1] = k[end] + delta_end * i
+        end
+
     end
+
 end
 
 
 # return original knot sequence (unpadded)
 function knots(B::BasisSpline)
     n = size(B.t,1)
-    return sub(B.t, (B.m):n-(2*B.m))
+    return sub(B.t, (B.m):n-B.m+1)
 end
 
 
@@ -101,29 +113,40 @@ end
 function SplineCoeffMatrix(B::BasisSpline)
     # number of points to eval at
     t = knots(B)
-    m = B.n
+    n_interior_knots = B.n
     # Why is n so weird?
-    n = B.m + m - 2
-    M = n-m
-    # Why is offset so weird?
-    offset = B.m
+    n_basis_functions = B.m + n_interior_knots - 2
+    # M = n-m
+    # # Why is offset so weird?
+    # offset = B.m
 
-    A = zeros(n,n)
-    for i = 1:m-1
-        for j=1:n
-            A[i,j] = BasisEval(B, j-offset, t[i])
-        end
-    end
-    A[m,n] = 1.
+    # A = zeros(n,n)
+    # for i = 1:m
+    #     for j=1:n
+    #         A[i,j] = BasisEval(B, j-offset, t[i])
+    #     end
+    # end
+    # #A[m,n] = 1.
 
-    # Now we add derivative conditions at the ends
-    for i = m+1:2:n
-        d = Int(ceil( float(i-m)/ 2.))
-        for j = 1:n
-            A[i,j] = BasisEval(B, j-offset, t[1], d)
-            if i+1 <= n
-                A[i+1,j] = BasisEval(B, j-offset, t[m]-eps(t[m]), d)
-            end
+    # # Now we add derivative conditions at the ends
+    # for i = m+1:2:n
+    #     d = Int(ceil( float(i-m)/ 2.))
+    #     for j = 1:n
+    #         A[i,j] = BasisEval(B, j-offset, t[1], d)
+    #         if i+1 <= n
+    #             A[i+1,j] = BasisEval(B, j-offset, t[m]-eps(t[m]), d)
+    #         end
+    #     end
+    # end
+    # return sparse(A)
+
+    A = zeros(n_interior_knots, n_interior_knots)
+
+    #offset = B.m
+    idxs = [Int(j) for j in -B.m/2:n_interior_knots-B.m/2-1]
+    for i = 1:n_interior_knots
+        for j = 1:n_interior_knots
+            A[i,j] = BasisEval(B, idxs[j], t[i])
         end
     end
     return sparse(A)
@@ -132,20 +155,34 @@ end
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
 function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, hilbert::Bool)
 
+    n_interior_knots = B.n
     # number of points to eval at
     m = size(x, 1)
-    # Why is n so weird?
-    n = B.m + B.n - 2
-    # Why is offset so weird?
-    offset = B.m
+    A = zeros(m,n_interior_knots)
 
-    A = zeros(m,n)
+    idxs = [Int(j) for j in -B.m/2:n_interior_knots-B.m/2-1]
     for i = 1:m
-        for j=1:n
-            A[i,j] = BasisEval(B, j-offset, x[i], 0, hilbert)
+        for j = 1:n_interior_knots
+            A[i,j] = BasisEval(B, idxs[j], x[i], 0, hilbert)
         end
     end
+
     return sparse(A)
+
+    # # number of points to eval at
+    # m = size(x, 1)
+    # # Why is n so weird?
+    # n = B.m + B.n - 2
+    # # Why is offset so weird?
+    # offset = B.m
+
+    # A = zeros(m,n)
+    # for i = 1:m
+    #     for j=1:n
+    #         A[i,j] = BasisEval(B, j-offset, x[i], 0, hilbert)
+    #     end
+    # end
+    # return sparse(A)
 end
 
 
@@ -162,6 +199,8 @@ end
 
 # Construct a set of B spline coefficients from values
 function Spline{T}(v::Vector{T}, B::BasisSpline)
+    # TODO: add flag everywhere to allow changing pad type
+    PadKnots(B, "extend")
     if( B.n == length(v) )
         A = SplineCoeffMatrix(B)
         m_mat = size(A,1)
