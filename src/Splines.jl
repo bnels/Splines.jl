@@ -17,6 +17,8 @@ type BasisSpline
    function BasisSpline(t::Vector{Float64}, m::Int=4)
         # sort and pad the knot sequence.  Default padding is repeated knots
         sort!(t)
+        difft = diff(t)
+        t = t + 0.5*[ difft; difft[end]; ]
         n = length(t)
         t_pad = [t[1] * ones(m-1); t; t[end]*ones(m-1)]
         return new(t_pad, n, m)
@@ -117,49 +119,30 @@ end
 
 
 
-
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
 # TODO: Derivative matching, make sparse
-# HACK: currently we eval the last guy slightly to the left of the knots because it isn't defined at the other location
 function SplineCoeffMatrix(B::BasisSpline)
     # number of points to eval at
     t = knots(B)
     n_interior_knots = B.n
     # Why is n so weird?
     n_basis_functions = B.m + n_interior_knots - 2
-    # M = n-m
-    # # Why is offset so weird?
-    # offset = B.m
-
-    # A = zeros(n,n)
-    # for i = 1:m
-    #     for j=1:n
-    #         A[i,j] = BasisEval(B, j-offset, t[i])
-    #     end
-    # end
-    # #A[m,n] = 1.
-
-    # # Now we add derivative conditions at the ends
-    # for i = m+1:2:n
-    #     d = Int(ceil( float(i-m)/ 2.))
-    #     for j = 1:n
-    #         A[i,j] = BasisEval(B, j-offset, t[1], d)
-    #         if i+1 <= n
-    #             A[i+1,j] = BasisEval(B, j-offset, t[m]-eps(t[m]), d)
-    #         end
-    #     end
-    # end
-    # return sparse(A)
 
     A = zeros(n_interior_knots, n_interior_knots)
 
     #offset = B.m
     idxs = [Int(j) for j in -B.m/2:n_interior_knots-B.m/2-1]
+
+    # TODO: don't evaluate outside of support of spline
+
     for i = 1:n_interior_knots
-        for j = 1:n_interior_knots
+        lb = max(i-B.m, 1)
+        ub = min(i+B.m, n_interior_knots)
+        for j = lb:ub
             A[i,j] = BasisEval(B, idxs[j], t[i])
         end
     end
+
     return sparse(A)
 end
 
@@ -172,28 +155,13 @@ function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, derivs::Int=0, hil
     A = zeros(m,n_interior_knots)
 
     idxs = [Int(j) for j in -B.m/2:n_interior_knots-B.m/2-1]
+
     for i = 1:m
         for j = 1:n_interior_knots
             A[i,j] = BasisEval(B, idxs[j], x[i], derivs, hilbert)
         end
     end
-
     return sparse(A)
-
-    # # number of points to eval at
-    # m = size(x, 1)
-    # # Why is n so weird?
-    # n = B.m + B.n - 2
-    # # Why is offset so weird?
-    # offset = B.m
-
-    # A = zeros(m,n)
-    # for i = 1:m
-    #     for j=1:n
-    #         A[i,j] = BasisEval(B, j-offset, x[i], 0, hilbert)
-    #     end
-    # end
-    # return sparse(A)
 end
 
 
@@ -207,6 +175,7 @@ type Spline{T}
 
     Spline{T} (B::BasisSpline, alpha::Vector{T}) = new(B, alpha)
 end
+
 
 # Construct a set of B spline coefficients from values
 function Spline{T}(v::Vector{T}, B::BasisSpline)
@@ -247,12 +216,21 @@ function *( S::Spline, scalar::Number )
     return scalar * S
 end
 
+# function +( S::Spline, scalar::Number )
+#     return Spline(S.)
+# end
+
+# function +( S::Spline, scalar::Number )
+#     return S + scalar
+# end
+
 function +( S1::Spline, S2::Spline )
     knots = unique(sort([ S1.B.t; S2.B.t ]))
     vals  = [ S1(knots[i]) + S2(knots[i]) for i in 1:length(knots) ]
     m = max( S1.B.m, S2.B.m )
     return Spline(vals, knots, m)
 end
+
 
 function -( S1::Spline, S2::Spline )
     return S1 + ((-1.) * S2)
