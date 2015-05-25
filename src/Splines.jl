@@ -25,9 +25,20 @@ end
 
 function PadKnots(B::BasisSpline, scheme::ASCIIString="repeat")
     if scheme == "reflect"
-
+        for i = 1:(B.m - 1)
+            B.t[i] = 2.0*B.t[B.m] - B.t[2*B.m - 1 - i]
+            B.t[B.m + B.n - 1 + i] = 2.0*B.t[B.m + B.n - 1] + B.t[B.m + B.n - 1 - i]
+        end
     elseif scheme == "periodic"
-
+        for i = 1:(B.m - 1)
+            B.t[i] = B.t[B.n + i]
+            B.t[B.n + B.m - 1 + i] = B.t[B.m - 1 + i]
+        end
+    elseif scheme == "repeat"
+        for i = 1:(B.m - 1)
+            B.t[i] = B.t[B.m]
+            B.t[B.n + B.m - 1 + i] = B.t[B.n + B.m - 1]
+        end
     elseif scheme == "extend"
         k = knots(B)
 
