@@ -121,7 +121,7 @@ end
 
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
 # TODO: Derivative matching, make sparse
-function SplineCoeffMatrix(B::BasisSpline)
+function SplineCoeffMatrix(B::BasisSpline, t_colloc::Vector{Float64})
     # number of points to eval at
     t = knots(B)
     n_interior_knots = B.n
@@ -139,7 +139,7 @@ function SplineCoeffMatrix(B::BasisSpline)
         lb = max(i-B.m, 1)
         ub = min(i+B.m, n_interior_knots)
         for j = lb:ub
-            A[i,j] = BasisEval(B, idxs[j], t[i])
+            A[i,j] = BasisEval(B, idxs[j], t_colloc[i])
         end
     end
 
@@ -178,11 +178,11 @@ end
 
 
 # Construct a set of B spline coefficients from values
-function Spline{T}(v::Vector{T}, B::BasisSpline)
+function Spline{T}(v::Vector{T}, B::BasisSpline, t_colloc::Vector{Float64})
     # TODO: add flag everywhere to allow changing pad type
     PadKnots(B, "extend")
     if( B.n == length(v) )
-        A = SplineCoeffMatrix(B)
+        A = SplineCoeffMatrix(B,t_colloc)
         m_mat = size(A,1)
         v1 = [ v; zeros(m_mat - length(v)); ]
         alpha = A \ v1
@@ -193,7 +193,7 @@ function Spline{T}(v::Vector{T}, B::BasisSpline)
 end
 
 # Utility constructor
-Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) = Spline(v, BasisSpline(t,m))
+Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) = Spline(v, BasisSpline(t,m), t)
 
 function call{T}(S::Spline{T}, x::Vector{Float64}, derivs::Int=0, hilbert::Bool=false)
     A = SplineEvalMatrix(S.B, x, derivs, hilbert)
@@ -225,7 +225,8 @@ end
 # end
 
 function +( S1::Spline, S2::Spline )
-    knots = unique(sort([ S1.B.t; S2.B.t ]))
+    #knots = unique(sort([ S1.B.t; S2.B.t ]))
+    knots = unique(sort([ knots(S1.B); knots(S2.B) ]))
     vals  = [ S1(knots[i]) + S2(knots[i]) for i in 1:length(knots) ]
     m = max( S1.B.m, S2.B.m )
     return Spline(vals, knots, m)
