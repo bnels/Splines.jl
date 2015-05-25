@@ -164,7 +164,7 @@ function SplineCoeffMatrix(B::BasisSpline)
 end
 
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
-function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, hilbert::Bool)
+function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, hilbert::Bool, derivs::Int=0)
 
     n_interior_knots = B.n
     # number of points to eval at
@@ -174,7 +174,7 @@ function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, hilbert::Bool)
     idxs = [Int(j) for j in -B.m/2:n_interior_knots-B.m/2-1]
     for i = 1:m
         for j = 1:n_interior_knots
-            A[i,j] = BasisEval(B, idxs[j], x[i], 0, hilbert)
+            A[i,j] = BasisEval(B, idxs[j], x[i], derivs, hilbert)
         end
     end
 
@@ -226,8 +226,8 @@ end
 # Utility constructor
 Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) = Spline(v, BasisSpline(t,m))
 
-function call{T}(S::Spline{T}, x::Vector{Float64}, hilbert::Bool=false)
-    A = SplineEvalMatrix(S.B, x, hilbert)
+function call{T}(S::Spline{T}, x::Vector{Float64}, hilbert::Bool=false, derivs::Int=0)
+    A = SplineEvalMatrix(S.B, x, hilbert, derivs)
     return A * S.alpha
 end
 
@@ -235,6 +235,7 @@ end
 function call{T}(S::Spline{T}, x::Float64, hilbert::Bool=false)
     return S([x], hilbert)[1]
 end
+
 
 function *( scalar::Number, S::Spline )
     alpha1 = [ promote(i,scalar)[1] for i in S.alpha ]
