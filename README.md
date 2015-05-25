@@ -39,7 +39,7 @@ plot(xs, ys)
 
 ### Derivatives
 You can take derivatives of your spline interpolation by adding an extra argument to your Spline function call
-~~~
+~~~julia
 using Splines
 using PyPlot
 
@@ -59,5 +59,27 @@ plot(xs, S(xs, 2), "green")
 Note that the number of derivatives you can take is limited by the order of spline you are using, and that you will begin to lose accuracy at the endpoints of your knot sequence as you increase derivatives
 
 ### Arithmetic Operations
+Splines support muliplication and division by scalars.
+~~~julia
+# still using the Spline on cosine input
+plot(xs, S(xs), "blue")
+plot(xs, 2*S(xs), "red")
+plot(xs, S(xs)/2, "green")
+~~~
+![Multiplication example](./doc/figs/mult_example.png)
+
+You can also add two splines together.  The resulting spline will be on the union of their knot sequences.
+~~~julia
+S = S1 + S2
+~~~
 
 ### Hilbert Transforms
+You can also take the Hilbert transform of splines.  This is useful for the EMD algorithm (e.g. [EMD.jl](https://github.com/bnels/EMD.jl)) and signal processing.  You can tell a Spline to return its Hilbert transform by setting its third argument to a boolean true.
+~~~julia
+plot(xs, S(xs), "blue") # cos(x)
+plot(xs, S(xs, 0, true), "red") # should be sin(x)
+~~~
+![Hilbert Transform example](./doc/figs/hilbert_example.png)
+
+You can also take derivatives of the Hilbert transform by setting the second argument to an integer other than 0.
+
