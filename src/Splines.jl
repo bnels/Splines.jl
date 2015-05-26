@@ -161,7 +161,7 @@ function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, derivs::Int=0, hil
             A[i,j] = BasisEval(B, idxs[j], x[i], derivs, hilbert)
         end
     end
-    return sparse(A)
+    return hilbert ? A : sparse(A)
 end
 
 
