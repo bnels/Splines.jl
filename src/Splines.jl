@@ -255,6 +255,7 @@ end
 
 # Utility constructor
 function Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) 
+    issorted(t) && return Spline(v, BasisSpline(t,m))
     # sort t and v
     π = sortperm(t)
     return Spline(copy(v[π]), BasisSpline(copy(t[π]),m))
