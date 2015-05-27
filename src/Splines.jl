@@ -254,7 +254,11 @@ function Spline{T}(v::Vector{T}, B::BasisSpline)
 end
 
 # Utility constructor
-Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) = Spline(v, BasisSpline(t,m))
+function Spline{T}(v::Vector{T}, t::Vector{Float64}, m::Int=4) 
+    # sort t and v
+    π = sortperm(t)
+    return Spline(copy(v[π]), BasisSpline(copy(t[π]),m))
+end
 
 function call{T}(S::Spline{T}, x::Vector{Float64}, derivs::Int=0, hilbert::Bool=false)
     A = SplineEvalMatrix(S.B, x, derivs, hilbert)
