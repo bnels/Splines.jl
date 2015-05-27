@@ -203,9 +203,9 @@ function SplineEvalMatrixSparse(B::BasisSpline, x::Vector{Float64}, derivs::Int=
     n_interior_knots = Int(B.n)
     m = Int(size(x,1))
 
-    MatRow = zeros(Int, m*B.m)
-    MatCol = zeros(Int, m*B.m)
-    MatVal = zeros(m*B.m)
+    MatRow = Int[]
+    MatCol = Int[]
+    MatVal = Float64[]
 
     idxs = [Int(j) for j in -B.m/2:n_interior_knots-B.m/2-1]
     j_prev = 1
@@ -214,14 +214,10 @@ function SplineEvalMatrixSparse(B::BasisSpline, x::Vector{Float64}, derivs::Int=
         j = FindFirstKnot(B, idxs, x[i], derivs, n_interior_knots, j_prev)
         j_prev = copy(j)
         for k = 1:B.m
-            if(j + k - 1 <= n_interior_knots)
-                MatRow[B.m*(i-1) + k ] = i
-                MatCol[B.m*(i-1) + k ] = j + k - 1
-                MatVal[B.m*(i-1) + k ] = BasisEval(B, idxs[j + k - 1], x[i], derivs)
-            else
-                MatRow[B.m*(i-1) + k ] = i
-                MatCol[B.m*(i-1) + k ] = j - k
-                MatVal[B.m*(i-1) + k ] = BasisEval(B, idxs[j - k], x[i], derivs)
+            if(0 < j + k - 1 <= n_interior_knots)
+                push!(MatRow, i)
+                push!(MatCol, j + k - 1)
+                push!(MatVal, BasisEval(B, idxs[j + k - 1], x[i], derivs))
             end
         end    
     end
