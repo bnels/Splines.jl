@@ -149,6 +149,8 @@ end
 # Construct system matrix to interpolate with, assuming zero boundary conditions (i.e., spline gets flat)
 function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, derivs::Int=0, hilbert::Bool=false)
 
+    hilbert || return SplineEvalMatrixSparse(B, x, derivs) # return sparse matrix if regular splines
+
     n_interior_knots = B.n
     # number of points to eval at
     m = size(x, 1)
@@ -161,7 +163,70 @@ function SplineEvalMatrix(B::BasisSpline, x::Vector{Float64}, derivs::Int=0, hil
             A[i,j] = BasisEval(B, idxs[j], x[i], derivs, hilbert)
         end
     end
-    return hilbert ? A : sparse(A)
+    return A
+end
+
+
+# find the first basis spline for which Basis spline is non-zero
+# return index as it appears in idxs
+# guess is where you think the knot is.
+# helper function for SplineEvalMatrixSparse
+# we're optimizing assuming SplineEvalMatrixSparse x array is sorted
+function FindFirstKnot(B::BasisSpline, idxs, x, derivs, n_interior_knots, guess::Int)
+    j_first = 0
+    if (BasisEval(B, idxs[guess], x, derivs) > 0) # if we guessed well, go fast
+        j_first = guess
+        while (j_first > 1 && BasisEval(B, idxs[j_first - 1], x, derivs) > 0)
+            j_first = j_first - 1
+        end
+        return j_first
+    end
+    for j = guess:n_interior_knots # assume that guess was underestimate
+        if (BasisEval(B,idxs[j], x, derivs) > 0)
+            j_first = j
+            return j_first
+        end
+    end
+    for j = guess-1:-1:1 # our guess was a shot in the dark.
+        if (BasisEval(B,idxs[j], x, derivs) > 0)
+            j_first = j
+            return j_first
+        end
+    end
+    return 1 # wasn't in knot sequence
+end
+
+# construct a sparse matrix if we aren't using a Hilbert transform
+# because support of each basis function is relatively small if we have more knots
+# this is way faster than dense matrix construction
+function SplineEvalMatrixSparse(B::BasisSpline, x::Vector{Float64}, derivs::Int=0)
+    n_interior_knots = Int(B.n)
+    m = Int(size(x,1))
+
+    MatRow = zeros(Int, m*B.m)
+    MatCol = zeros(Int, m*B.m)
+    MatVal = zeros(m*B.m)
+
+    idxs = [Int(j) for j in -B.m/2:n_interior_knots-B.m/2-1]
+    j_prev = 1
+
+    for i = 1:m
+        j = FindFirstKnot(B, idxs, x[i], derivs, n_interior_knots, j_prev)
+        j_prev = copy(j)
+        for k = 1:B.m
+            if(j + k - 1 <= n_interior_knots)
+                MatRow[B.m*(i-1) + k ] = i
+                MatCol[B.m*(i-1) + k ] = j + k - 1
+                MatVal[B.m*(i-1) + k ] = BasisEval(B, idxs[j + k - 1], x[i], derivs)
+            else
+                MatRow[B.m*(i-1) + k ] = i
+                MatCol[B.m*(i-1) + k ] = j - k
+                MatVal[B.m*(i-1) + k ] = BasisEval(B, idxs[j - k], x[i], derivs)
+            end
+        end    
+    end
+
+    return sparse(MatRow, MatCol, MatVal, m, n_interior_knots)
 end
 
 
