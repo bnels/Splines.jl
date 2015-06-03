@@ -174,7 +174,7 @@ end
 # we're optimizing assuming SplineEvalMatrixSparse x array is sorted
 function FindFirstKnot(B::BasisSpline, idxs, x, derivs, n_interior_knots, guess::Int)
     j_first = 0
-    if (BasisEval(B, idxs[guess], x, derivs) > 0) # if we guessed well, go fast
+    if (BasisEval(B, idxs[guess], x, derivs) != 0) # if we guessed well, go fast
         j_first = guess
         while (j_first > 1 && BasisEval(B, idxs[j_first - 1], x, derivs) != 0)
             j_first = j_first - 1
