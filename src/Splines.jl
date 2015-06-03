@@ -176,19 +176,19 @@ function FindFirstKnot(B::BasisSpline, idxs, x, derivs, n_interior_knots, guess:
     j_first = 0
     if (BasisEval(B, idxs[guess], x, derivs) > 0) # if we guessed well, go fast
         j_first = guess
-        while (j_first > 1 && BasisEval(B, idxs[j_first - 1], x, derivs) > 0)
+        while (j_first > 1 && BasisEval(B, idxs[j_first - 1], x, derivs) != 0)
             j_first = j_first - 1
         end
         return j_first
     end
     for j = guess:n_interior_knots # assume that guess was underestimate
-        if (BasisEval(B,idxs[j], x, derivs) > 0)
+        if (BasisEval(B,idxs[j], x, derivs) != 0)
             j_first = j
             return j_first
         end
     end
     for j = guess-1:-1:1 # our guess was a shot in the dark.
-        if (BasisEval(B,idxs[j], x, derivs) > 0)
+        if (BasisEval(B,idxs[j], x, derivs) != 0)
             j_first = j
             return j_first
         end
